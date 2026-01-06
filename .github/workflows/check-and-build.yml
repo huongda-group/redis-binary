@@ -23,7 +23,6 @@ jobs:
           LATEST_TAG=$(curl -s https://api.github.com/repos/redis/redis/releases/latest | jq -r .tag_name)
           MY_LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
           
-          # Nếu chạy thủ công hoặc có version mới
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$LATEST_TAG" != "$MY_LATEST_RELEASE" ]; then
             echo "new_release=true" >> $GITHUB_OUTPUT
             echo "version=$LATEST_TAG" >> $GITHUB_OUTPUT
@@ -75,7 +74,6 @@ jobs:
           BINARY_NAME="redis-server-${{ matrix.os_name }}"
           cp src/redis-server ../dist/${BINARY_NAME}
           
-          # Tạo file checksum SHA256
           cd ../dist
           sha256sum ${BINARY_NAME} > ${BINARY_NAME}.sha256
 
@@ -89,7 +87,7 @@ jobs:
     needs: [check-version, build-and-release]
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Quyền quan trọng để tạo/xóa release
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -97,7 +95,8 @@ jobs:
           path: all-bins
           merge-multiple: true
 
-      - name: Delete existing Release (if re-build)
+      - name: Delete existing Release (Manual Trigger Only)
+        if: github.event_name == 'workflow_dispatch'
         uses: dev-drprasad/delete-tag-and-release@v1.1
         with:
           tag_name: ${{ needs.check-version.outputs.version }}
@@ -109,11 +108,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check-version.outputs.version }}
-          name: Redis Release ${{ needs.check-version.outputs.version }}
+          name: Redis ${{ needs.check-version.outputs.version }}
           body: |
             ## Automated Redis Build for Panel
             - **Version:** ${{ needs.check-version.outputs.version }}
-            - **Build Date:** ${{ github.event.head_commit.timestamp || 'Manual Trigger' }}
+            - **Type:** ${{ github.event_name == 'workflow_dispatch' && 'Manual Rebuild' || 'Automatic Update' }}
             - **Source:** [Redis Upstream](https://github.com/redis/redis/releases/tag/${{ needs.check-version.outputs.version }})
           files: all-bins/*
           token: ${{ secrets.GITHUB_TOKEN }}
